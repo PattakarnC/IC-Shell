@@ -21,6 +21,16 @@ int is_empty(char* str) {
     return 1;
 }
 
+void exit_with_status(char* status) {
+    if (is_empty(status)) {
+        printf("Please specify the exit code!\n");
+    }
+    else {
+        printf("bye");
+        exit(atoi(status));
+    }
+}
+
 // source: https://www.geeksforgeeks.org/c-program-to-trim-leading-white-spaces-from-string/
 char* trim_leading_spaces(char* str) {
     static char str1[MAX_CMD_CHAR];
@@ -96,7 +106,12 @@ void cmd_handler(char* input) {
             cmd_handler(last_cmd);
         }
     }
-    
+
+    // command == exit
+    else if (strcmp(inputArgs[0], listOfCmd[2]) == 0) {
+        exit_with_status(inputArgs[1]);
+    }
+
     else {
         printf("bad command\n");
     }
