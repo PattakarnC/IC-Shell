@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <signal.h>
 #include <unistd.h>
 
 #define	MAX_CMD_CHAR 256
@@ -29,7 +30,7 @@ int is_empty(char* str) {
 }
 
 void exit_with_status(char* status) {
-    if (is_empty(status)) {
+    if (status == NULL) {
         printf("Please specify the exit code!\n");
     }
     else {
@@ -125,25 +126,7 @@ void cmd_handler(char* input) {
     
     else {
         assign_last_cmd(input);
-        pid = fork();
-
-        // wait for the child process to terminate (blocking)
-        if (pid > 0) {
-            waitpid(pid, NULL, 0);  
-        }
-        else if (pid == 0) {
-            int execVal = execvp(inputArgs[0], inputArgs);
-
-            // if the user's command doesn't match with any of the command
-            if (execVal == -1) {
-                printf("bad command\n");
-                exit(EXIT_FAILURE);
-            }
-        }
-        else {
-            printf("fork error!\n");
-            exit(EXIT_FAILURE);
-        }    
+        printf("bad command\n");
     }
 }
  
@@ -170,37 +153,8 @@ void shell_start() {
     }
 }
 
-void script_mode_start(char* filename) {
-    char* buffer = malloc(MAX_CMD_CHAR * sizeof(char));
-    FILE* file = fopen(filename, "r");
-
-    // read the file line by line and execute it  
-    if (file) {
-        while (!feof(file)) {
-            memset(buffer, 0x00, MAX_CMD_CHAR);       // clean the buffer
-            fscanf(file, "%[^\n]\n", buffer);         // read a line in file 
-            if (is_empty(buffer)) {
-                continue;
-            }
-            else {
-                cmd_handler(buffer);           
-            }
-        }
-    }
-    else {
-        printf("the given program does not exist!\n");
-    }
-    fclose(file);
-    free(buffer);
-}
-
 int main(int argc, char *argv[]) {
-    if (argv[1]) {
-        script_mode_start(argv[1]);
-    }
-    else {
-        printf("Starting IC Shell\n");
-        shell_start();
-    }
+    printf("Starting IC Shell\n");
+    shell_start();
     return 0;
 }
