@@ -126,7 +126,25 @@ void cmd_handler(char* input) {
     
     else {
         assign_last_cmd(input);
-        printf("bad command\n");
+        pid = fork();
+
+        // wait for the child process to terminate (blocking)
+        if (pid > 0) {
+            waitpid(pid, NULL, 0);  
+        }
+        else if (pid == 0) {
+            int execVal = execvp(inputArgs[0], inputArgs);
+
+            // if the user's command doesn't match with any of the command
+            if (execVal == -1) {
+                printf("bad command\n");
+                exit(EXIT_FAILURE);
+            }
+        }
+        else {
+            printf("fork error!\n");
+            exit(EXIT_FAILURE);
+        }    
     }
 }
  
@@ -137,6 +155,20 @@ void read_command() {
     fflush(stdout);
 
     fgets(cmd, MAX_CMD_CHAR, stdin);
+}
+
+void shell_start() {
+    while (1) {
+        read_command();
+
+        // if the user passes an empty command or space character
+        if (is_empty(cmd)) {
+            continue;
+        }
+        else {
+            cmd_handler(cmd);
+        }
+    }
 }
 
 void script_mode_start(char* filename) {
@@ -161,21 +193,6 @@ void script_mode_start(char* filename) {
     }
     fclose(file);
     free(buffer);
-}
-
-
-void shell_start() {
-    while (1) {
-        read_command();
-
-        // if the user passes an empty command or space character
-        if (is_empty(cmd)) {
-            continue;
-        }
-        else {
-            cmd_handler(cmd);
-        }
-    }
 }
 
 int main(int argc, char *argv[]) {
