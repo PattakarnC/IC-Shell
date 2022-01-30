@@ -2,13 +2,20 @@
 #include <stdlib.h>
 #include <string.h> 
 #include <ctype.h>
-
-// #include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #define	MAX_CMD_CHAR 256
 
 char last_cmd[MAX_CMD_CHAR];    // a string holder for last user's input
 char cmd[MAX_CMD_CHAR];         // a string holder for user's input
+pid_t pid;
+
+void assign_last_cmd(char* input) {
+    input[strcspn(input, "\n")] = 0;         // removing trailing new line from input 
+    strcpy(last_cmd, input);                 // assign it to last_cmd
+}
 
 // check if the given string is empty or contains only white space
 int is_empty(char* str) {
@@ -63,8 +70,8 @@ char* trim_trailing_spaces(char* str) {
 
 char** get_cmd_and_args(char* input) {
     char* cleanInput = trim_leading_spaces(input);
-    char** cmdAndArgs = malloc(2 * sizeof(char*));
-    for (int i = 0; i < 2; i++) {
+    char** cmdAndArgs = malloc(3 * sizeof(char*));
+    for (int i = 0; i < 3; i++) {
         cmdAndArgs[i] = malloc(MAX_CMD_CHAR * sizeof(char));
     } 
 
@@ -75,26 +82,30 @@ char** get_cmd_and_args(char* input) {
 
     // if there is no argument in the input, assign null to the argument string
     if (argument == NULL) {
-        strcpy(cmdAndArgs[1], "");
+        cmdAndArgs[1] = '\0';
     }
     // else, trim the leading white space and assign it
-    else { 
+    else {
         strcpy(cmdAndArgs[1], trim_leading_spaces(argument)); 
     }
 
+    cmdAndArgs[2] = '\0';    // assign NULL to last element of string array
     return cmdAndArgs;
 }
 
 void cmd_handler(char* input) {
     char listOfCmd[3][5] = {"echo", "!!", "exit"};
     char** inputArgs = get_cmd_and_args(input);
-    
+
     // command = echo
     if (strcmp(inputArgs[0], listOfCmd[0]) == 0) {
-
-        input[strcspn(input, "\n")] = 0;         // removing trailing new line from input 
-        strcpy(last_cmd, input);                 // assign it to last_cmd
-        printf("%s\n", inputArgs[1]);
+        assign_last_cmd(input);
+        if (inputArgs[1] == NULL) {
+            printf("\n");
+        }
+        else {
+            printf("%s\n", inputArgs[1]);
+        }
     } 
     
     // command = !! 
@@ -107,17 +118,35 @@ void cmd_handler(char* input) {
         }
     }
 
-    // command == exit
+    // command = exit
     else if (strcmp(inputArgs[0], listOfCmd[2]) == 0) {
         exit_with_status(inputArgs[1]);
     }
-
+    
     else {
-        printf("bad command\n");
+        assign_last_cmd(input);
+        pid = fork();
+
+        // wait for the child process to terminate (blocking)
+        if (pid > 0) {
+            waitpid(pid, NULL, 0);  
+        }
+        else if (pid == 0) {
+            int execVal = execvp(inputArgs[0], inputArgs);
+
+            // if the user's command doesn't match with any of the command
+            if (execVal == -1) {
+                printf("bad command\n");
+                exit(EXIT_FAILURE);
+            }
+        }
+        else {
+            printf("fork error!\n");
+            exit(EXIT_FAILURE);
+        }    
     }
 }
  
-
 void read_command() {
     printf("icsh $ ");
 
