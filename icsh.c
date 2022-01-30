@@ -139,6 +139,31 @@ void read_command() {
     fgets(cmd, MAX_CMD_CHAR, stdin);
 }
 
+void script_mode_start(char* filename) {
+    char* buffer = malloc(MAX_CMD_CHAR * sizeof(char));
+    FILE* file = fopen(filename, "r");
+
+    // read the file line by line and execute it  
+    if (file) {
+        while (!feof(file)) {
+            memset(buffer, 0x00, MAX_CMD_CHAR);       // clean the buffer
+            fscanf(file, "%[^\n]\n", buffer);         // read a line in file 
+            if (is_empty(buffer)) {
+                continue;
+            }
+            else {
+                cmd_handler(buffer);           
+            }
+        }
+    }
+    else {
+        printf("the given program does not exist!\n");
+    }
+    fclose(file);
+    free(buffer);
+}
+
+
 void shell_start() {
     while (1) {
         read_command();
@@ -154,7 +179,12 @@ void shell_start() {
 }
 
 int main(int argc, char *argv[]) {
-    printf("Starting IC Shell\n");
-    shell_start();
+    if (argv[1]) {
+        script_mode_start(argv[1]);
+    }
+    else {
+        printf("Starting IC Shell\n");
+        shell_start();
+    }
     return 0;
 }
