@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <unistd.h>
 
+#define _POSIX_SOURCE
 #define	MAX_CMD_CHAR 256
 
 char last_cmd[MAX_CMD_CHAR];    // a string holder for last user's input
@@ -69,6 +70,23 @@ char* trim_trailing_spaces(char* str) {
     return str;
 }
 
+char** get_cmd_agrs_as_tokens(char* input) {
+    char** tokens = malloc(MAX_CMD_CHAR * sizeof(char*));
+    for (int i = 0; i < MAX_CMD_CHAR; i++) {
+        tokens[i] = malloc(MAX_CMD_CHAR * sizeof(char));
+    }
+    char* pch;
+    int index = 0; 
+    pch = strtok(input," ");
+    while (pch != NULL) {
+        tokens[index] = pch;
+        pch = strtok(NULL, " ");
+        index++;
+    }
+    tokens[index] = '\0';
+    return tokens;
+}
+
 char** get_cmd_and_args(char* input) {
     char* cleanInput = trim_leading_spaces(input);
     char** cmdAndArgs = malloc(3 * sizeof(char*));
@@ -126,14 +144,15 @@ void cmd_handler(char* input) {
     
     else {
         assign_last_cmd(input);
+        char** tokens = get_cmd_agrs_as_tokens(input);
         pid = fork();
+        int status;
 
-        // wait for the child process to terminate (blocking)
         if (pid > 0) {
-            waitpid(pid, NULL, 0);  
+            waitpid(pid, &status, WUNTRACED);
         }
         else if (pid == 0) {
-            int execVal = execvp(inputArgs[0], inputArgs);
+            int execVal = execvp(tokens[0], tokens);
 
             // if the user's command doesn't match with any of the command
             if (execVal == -1) {
@@ -144,8 +163,10 @@ void cmd_handler(char* input) {
         else {
             printf("fork error!\n");
             exit(EXIT_FAILURE);
-        }    
+        }
+        free(tokens);    
     }
+    free(inputArgs);
 }
  
 void read_command() {
