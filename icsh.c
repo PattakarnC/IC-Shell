@@ -13,6 +13,7 @@
 char last_cmd[MAX_CMD_CHAR];    // a string holder for last user's input
 char cmd[MAX_CMD_CHAR];         // a string holder for user's input
 pid_t pid;
+int exit_code;
 
 void assign_last_cmd(char* input) {
     input[strcspn(input, "\n")] = 0;         // removing trailing new line from input 
@@ -89,8 +90,8 @@ char** get_cmd_agrs_as_tokens(char* input) {
 
 char** get_cmd_and_args(char* input) {
     char* cleanInput = trim_leading_spaces(input);
-    char** cmdAndArgs = malloc(3 * sizeof(char*));
-    for (int i = 0; i < 3; i++) {
+    char** cmdAndArgs = malloc(2 * sizeof(char*));
+    for (int i = 0; i < 2; i++) {
         cmdAndArgs[i] = malloc(MAX_CMD_CHAR * sizeof(char));
     } 
 
@@ -103,12 +104,11 @@ char** get_cmd_and_args(char* input) {
     if (argument == NULL) {
         cmdAndArgs[1] = '\0';
     }
-    // else, trim the leading white space and assign it
+    // else, trim the trailing and leading white space and assign it
     else {
-        strcpy(cmdAndArgs[1], trim_leading_spaces(argument)); 
+        char* sanitisedArg = trim_trailing_spaces(argument);
+        strcpy(cmdAndArgs[1], trim_leading_spaces(sanitisedArg)); 
     }
-
-    cmdAndArgs[2] = '\0';    // assign NULL to last element of string array
     return cmdAndArgs;
 }
 
@@ -122,9 +122,13 @@ void cmd_handler(char* input) {
         if (inputArgs[1] == NULL) {
             printf("\n");
         }
+        else if (strcmp(inputArgs[1], "$?") == 0) {
+            printf("%d\n", exit_code);
+        }
         else {
             printf("%s\n", inputArgs[1]);
         }
+        exit_code = 0;
     } 
     
     // command = !! 
@@ -134,12 +138,14 @@ void cmd_handler(char* input) {
         if (!is_empty(last_cmd)) {
             printf("%s\n", last_cmd);
             cmd_handler(last_cmd);
+            exit_code = 0;
         }
     }
 
     // command = exit
     else if (strcmp(inputArgs[0], listOfCmd[2]) == 0) {
         exit_with_status(inputArgs[1]);
+        exit_code = 0;
     }
     
     else {
@@ -150,8 +156,33 @@ void cmd_handler(char* input) {
 
         if (pid > 0) {
             waitpid(pid, &status, WUNTRACED);
+            signal(SIGTTOU, SIG_IGN);
+            tcsetpgrp(STDIN_FILENO, getpid());     // reset the foreground process group
+
+            if (WIFEXITED(status)) {               // if the process terminated normally
+                exit_code = WEXITSTATUS(status);
+            }
+            if (WIFSIGNALED(status)) {             // if the process was terminated by a signal
+                exit_code = WTERMSIG(status);
+            }
+            if (WIFSTOPPED(status)) {              // if the process was stopped by a signal
+                exit_code = WSTOPSIG(status);       
+            }
         }
         else if (pid == 0) {
+            
+            // create a process group id for the child process using its PID
+            if (setpgid(0, 0) < 0) {      
+                perror("setpgid");
+                exit(EXIT_FAILURE);
+            }
+
+            signal(SIGTTOU, SIG_IGN);
+            tcsetpgrp(STDIN_FILENO, getpid());     // transfer the foreground process to the newly created PGID
+
+            signal(SIGTSTP, SIG_DFL);
+            signal(SIGINT, SIG_DFL);
+
             int execVal = execvp(tokens[0], tokens);
 
             // if the user's command doesn't match with any of the command
@@ -217,6 +248,10 @@ void script_mode_start(char* filename) {
 }
 
 int main(int argc, char *argv[]) {
+
+    signal(SIGINT, SIG_IGN);
+    signal(SIGTSTP, SIG_IGN);
+
     if (argv[1]) {
         script_mode_start(argv[1]);
     }
