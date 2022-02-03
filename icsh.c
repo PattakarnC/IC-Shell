@@ -6,6 +6,9 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <errno.h>  
 
 #define _POSIX_SOURCE
 #define	MAX_CMD_CHAR 256
@@ -14,6 +17,39 @@ char last_cmd[MAX_CMD_CHAR];    // a string holder for last user's input
 char cmd[MAX_CMD_CHAR];         // a string holder for user's input
 pid_t pid;
 int exit_code;
+
+void redirection_checker(char** input) {
+    int index = 0;
+    while (input[index] != NULL) {
+
+        // if the string is "<" and the file name is not null
+        if (strcmp(input[index], "<") == 0 && input[index + 1] != NULL) {
+            int file = open(input[index+1], O_RDONLY);      // read only
+            if (file == -1) {
+                printf("Error opening file\n");
+                exit(errno);
+            }
+            dup2(file, STDIN_FILENO);
+            input[index] = NULL;
+            close(file);
+            break;
+        }
+
+        // if the string is ">" and the file name is not null
+        else if (strcmp(input[index], ">") == 0 && input[index + 1] != NULL) {
+            int file = open(input[index+1], O_WRONLY | O_CREAT, 0777);      // write only + create a file if not exist
+            if (file == -1) {
+                printf("Error opening file\n");
+                exit(errno);
+            }
+            dup2(file, STDOUT_FILENO);
+            input[index] = NULL;
+            close(file);
+            break;
+        }
+        index++;
+    }
+}
 
 void assign_last_cmd(char* input) {
     input[strcspn(input, "\n")] = 0;         // removing trailing new line from input 
@@ -173,7 +209,7 @@ void cmd_handler(char* input) {
             
             // create a process group id for the child process using its PID
             if (setpgid(0, 0) < 0) {      
-                perror("setpgid");
+                perror("ERROR: ");
                 exit(EXIT_FAILURE);
             }
 
@@ -182,6 +218,8 @@ void cmd_handler(char* input) {
 
             signal(SIGTSTP, SIG_DFL);
             signal(SIGINT, SIG_DFL);
+
+            redirection_checker(tokens);             // check for > and < in the input
 
             int execVal = execvp(tokens[0], tokens);
 
