@@ -7,6 +7,8 @@
 #include <signal.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <ctype.h>
+
 #include <fcntl.h>
 #include <errno.h>  
 
@@ -17,6 +19,138 @@ char last_cmd[MAX_CMD_CHAR];    // a string holder for last user's input
 char cmd[MAX_CMD_CHAR];         // a string holder for user's input
 pid_t pid;
 int exit_code;
+
+struct job_elem {
+    int jid;                    // job ID
+    pid_t pid;                  // process ID
+    char* state;                // state of a process (E.g. bg, fg)
+    char** command;             // command
+    struct job_elem* next;      // next node (for linked list)
+};
+typedef struct job_elem job; 
+
+int job_no = 1;
+
+job* head = NULL;
+
+// for duplicating string array 
+char** copy_array_of_string(char** src) {
+    char** array = malloc(MAX_CMD_CHAR * sizeof(char*));
+    for (int i = 0; i < MAX_CMD_CHAR; i++) {
+        array[i] = malloc(MAX_CMD_CHAR * sizeof(char));
+    } 
+    int index = 0;
+    while (src[index] != NULL) {
+        strcpy(array[index], src[index]);
+        index++;
+    }
+    return array;
+}
+
+void add_job(int jid, pid_t pid, char* state, char** command) {
+    job* link = (job*) malloc(sizeof(job));
+    
+    link->jid = job_no;
+    link->pid = pid;
+    link->command = copy_array_of_string(command);
+
+    size_t len = strlen(state) + 1;
+    link->state = (char *)malloc(sizeof(char) * (len + 1));
+    memcpy(link->state, state, len);
+
+    link->next = head;
+    head = link;
+    job_no++;
+}
+
+void remove_job_with_pid(pid_t pid) {
+    job* current = head;
+    job* previous;
+    while (current != NULL) {
+        if (current->pid == pid) {
+            if (current == head) {
+                head = current->next;
+            }
+            else {
+                previous->next = current->next;
+            }
+            job_no--;
+        }
+        previous = current;
+        current = current->next;
+    }
+}
+
+void print_job_list() {
+    int j = 0;
+    job* current = head;
+    while (current != NULL) {
+        if (strcmp(current->state, "bg") == 0) {
+            if (current->pid == head->pid) {
+                printf("[%d]+  Running                 ", current->jid);
+            }
+            else if (current->pid == head->next->pid) {
+                printf("[%d]-  Running                 ", current->jid);
+            }
+            else {
+                printf("[%d]   Running                 ", current->jid);
+            }
+            while (strcmp(current->command[j], "")) {
+                printf("%s ", current->command[j]);
+                j++;
+            }
+            j = 0;
+            printf("&\n");
+        }
+        else if (strcmp(current->state, "fg") == 0) {}
+        current = current->next;
+    }
+}
+
+void run_foreground(int jid) {
+    int j = 0;
+    int ppid = getpid();
+    job* current = head;
+    while (current != NULL) {
+        if (current->jid == jid && strcmp(current->state, "bg") == 0) {
+            int status;
+            current->state = "fg";
+            
+            while (strcmp(current->command[j], "")) {
+                if (strcmp(current->command[j], "&")) {
+                    printf("%s ", current->command[j]);
+                }
+                j++;
+            }
+            j = 0;
+            printf("\n");
+
+            tcsetpgrp(STDIN_FILENO, current->pid);
+            kill(current->pid, SIGCONT);
+            waitpid(current->pid, &status, 0);
+            remove_job_with_pid(current->pid);
+            tcsetpgrp(STDIN_FILENO, ppid);
+        }
+        current = current->next;
+    }
+}
+
+
+
+// check for "&" character in a string
+int background_checker(char** input) {
+    int index = 0;
+    int n = 0;
+    while (input[index] != NULL) {
+        n++;
+        if (strcmp(input[index], "&") == 0 && n > 1) {
+            input[index] = NULL;
+            return 1;
+        }
+        index++;
+    }
+    return 0;
+}
 
 void redirection_checker(char** input) {
     int index = 0;
@@ -140,16 +274,18 @@ char** get_cmd_and_args(char* input) {
     if (argument == NULL) {
         cmdAndArgs[1] = '\0';
     }
+
     // else, trim the trailing and leading white space and assign it
     else {
         char* sanitisedArg = trim_trailing_spaces(argument);
         strcpy(cmdAndArgs[1], trim_leading_spaces(sanitisedArg)); 
     }
+
     return cmdAndArgs;
 }
 
 void cmd_handler(char* input) {
-    char listOfCmd[3][5] = {"echo", "!!", "exit"};
+    char listOfCmd[6][5] = {"echo", "!!", "exit", "jobs", "fg", "bg"};
     char** inputArgs = get_cmd_and_args(input);
 
     // command = echo
@@ -183,28 +319,58 @@ void cmd_handler(char* input) {
         exit_with_status(inputArgs[1]);
         exit_code = 0;
     }
+
+    // command = jobs
+    else if (strcmp(inputArgs[0], listOfCmd[3]) == 0) {
+        assign_last_cmd(input);
+        print_job_list();
+        exit_code = 0;
+    }
+
+    // command = fg
+    else if (strcmp(inputArgs[0], listOfCmd[4]) == 0) {
+        assign_last_cmd(input);
+        char** tokens = get_cmd_agrs_as_tokens(input);
+        char num = tokens[1][1];
+        if (tokens[1][0] == '%' && !isalpha(num)) {
+            int jid = num - '0';
+            run_foreground(jid);
+        }
+        
+    }
     
     else {
         assign_last_cmd(input);
         char** tokens = get_cmd_agrs_as_tokens(input);
-        pid = fork();
+        int background = background_checker(tokens);
         int status;
-
+        pid = fork();
+        
+        // parent
         if (pid > 0) {
-            waitpid(pid, &status, WUNTRACED);
-            signal(SIGTTOU, SIG_IGN);
-            tcsetpgrp(STDIN_FILENO, getpid());     // reset the foreground process group
+            if (!background) {
+                tcsetpgrp(STDIN_FILENO, pid);          
+                waitpid(pid, &status, WUNTRACED);
 
-            if (WIFEXITED(status)) {               // if the process terminated normally
-                exit_code = WEXITSTATUS(status);
+                if (WIFEXITED(status)) {               // if the process terminated normally
+                    exit_code = WEXITSTATUS(status);
+                }
+                if (WIFSIGNALED(status)) {             // if the process was terminated by a signal
+                    exit_code = WTERMSIG(status);
+                }
+                if (WIFSTOPPED(status)) {              // if the process was stopped by a signal
+                    exit_code = WSTOPSIG(status);       
+                }
+
+                tcsetpgrp(STDIN_FILENO, getpid());     // reset the foreground process group
             }
-            if (WIFSIGNALED(status)) {             // if the process was terminated by a signal
-                exit_code = WTERMSIG(status);
-            }
-            if (WIFSTOPPED(status)) {              // if the process was stopped by a signal
-                exit_code = WSTOPSIG(status);       
+            else {
+                add_job(job_no, pid, "bg", tokens);
+                printf("[%d] %d\n", job_no - 1, pid);
             }
         }
+
+        //child
         else if (pid == 0) {
             
             // create a process group id for the child process using its PID
@@ -213,11 +379,12 @@ void cmd_handler(char* input) {
                 exit(EXIT_FAILURE);
             }
 
-            signal(SIGTTOU, SIG_IGN);
-            tcsetpgrp(STDIN_FILENO, getpid());     // transfer the foreground process to the newly created PGID
-
             signal(SIGTSTP, SIG_DFL);
             signal(SIGINT, SIG_DFL);
+
+            if (!background) {
+                tcsetpgrp(STDIN_FILENO, getpid());   
+            }
 
             redirection_checker(tokens);             // check for > and < in the input
 
@@ -226,7 +393,7 @@ void cmd_handler(char* input) {
             // if the user's command doesn't match with any of the command
             if (execVal == -1) {
                 printf("bad command\n");
-                exit(EXIT_FAILURE);
+                exit(127);
             }
         }
         else {
@@ -285,10 +452,52 @@ void script_mode_start(char* filename) {
     free(buffer);
 }
 
+// modiefied from: https://docs.oracle.com/cd/E19455-01/806-4750/signals-7/index.html
+void handle_chld() {
+    int wstat;
+    pid_t pid;
+    
+    pid = wait3(&wstat, WNOHANG, (struct rusage *)NULL );
+    if (pid == 0) {
+        return;
+    }
+    else if (pid == -1) {
+        return;
+    }
+    else {
+        int j;
+        job* current = head;
+        while (current != NULL) {
+            if (current->pid == pid) {
+                if (current->pid == head->pid) {
+                    printf("\n[%d]+  Done                    ", current->jid);
+                }
+                else if (current->pid == head->next->pid) {
+                    printf("\n[%d]-  Done                    ", current->jid);
+                }
+                else {
+                    printf("\n[%d]   Done                    ", current->jid);
+                }
+
+                while (strcmp(current->command[j], "")) {
+                    printf("%s ", current->command[j]);
+                    j++;
+                }
+                printf("\n");
+                remove_job_with_pid(pid);
+                return;
+            }
+            current = current->next;
+        }
+    }
+}
+
 int main(int argc, char *argv[]) {
 
+    signal(SIGTTOU, SIG_IGN);       // allows the shell to take back control after some foreground process have terminated.
     signal(SIGINT, SIG_IGN);
     signal(SIGTSTP, SIG_IGN);
+    signal(SIGCHLD, &handle_chld);
 
     if (argv[1]) {
         script_mode_start(argv[1]);
