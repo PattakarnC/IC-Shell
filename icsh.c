@@ -85,6 +85,7 @@ void print_job_list() {
     int j = 0;
     job* current = head;
     while (current != NULL) {
+
         if (strcmp(current->state, "bg") == 0) {
             if (current->pid == head->pid) {
                 printf("[%d]+  Running                 ", current->jid);
@@ -102,6 +103,7 @@ void print_job_list() {
             j = 0;
             printf("&\n");
         }
+        
         else if (strcmp(current->state, "s") == 0) {
             if (current->pid == head->pid) {
                 printf("[%d]+  Stopped                 ", current->jid);
