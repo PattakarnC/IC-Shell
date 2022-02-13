@@ -20,9 +20,9 @@ A simple shell for Linux. The functionality of this shell is similar to other po
 * **`jobs`**
   * The jobs command shows a table of uncompleted job information (job ids, process status, commands). 
 * **`fg %<job_id>`**
-  * Brings the job identified by <job_id> into the foreground. If this job was previously stopped, it will be running.
+  * Brings the job identified by `<job_id>` into the foreground. If this job was previously stopped, it will be running.
 * **`bg %<job_id>`**
-  * Execute the suspended job identified by <job_id> in the background.
+  * Execute the suspended job identified by `<job_id>` in the background.
 
 ## Extra Feature
-Type `quiz` to start solving 20 simple math problems and see how accurate/fast you are!
+Type **`quiz`** to start solving 20 simple math problems and see how accurate/fast you are!
