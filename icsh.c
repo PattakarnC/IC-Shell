@@ -388,6 +388,7 @@ char** get_cmd_agrs_as_tokens(char* input) {
     char* pch;
     int index = 0; 
     pch = strtok(input," ");
+    
     while (pch != NULL) {
         tokens[index] = pch;
         pch = strtok(NULL, " ");
