@@ -23,7 +23,7 @@ int exit_code;
 struct job_elem {
     int jid;                    // job ID
     pid_t pid;                  // process ID
-    char* state;                // state of a process (E.g. bg, fg, s)
+    char* state;                // state of a process (E.g. bg, fg, s, d)
     char** command;             // command
     struct job_elem* next;      // pointer to next job
 };
@@ -81,6 +81,40 @@ void remove_job_with_pid(pid_t pid) {
     }
 }
 
+void print_finished_job() {
+    int j = 0;
+    job* current = head;
+    while (current != NULL) {
+        if (!strcmp(current->state, "d")) {
+            if (current->pid == head->pid) {
+                printf("[%d]+  Done                    ", current->jid);
+            }
+            else if (current->pid == head->next->pid) {
+                printf("[%d]-  Done                    ", current->jid);
+            }
+            else {
+                printf("[%d]   Done                    ", current->jid);
+            }
+
+            while (strcmp(current->command[j], "")) {
+                printf("%s ", current->command[j]);
+                j++;
+            }
+            j = 0;
+            printf("\n");
+        }
+        current = current->next;
+    }
+
+    current = head;       // reset pointer to head
+    while (current != NULL) {
+        if (!strcmp(current->state, "d")) {
+            remove_job_with_pid(current->pid);     
+        }
+        current = current->next;
+    }
+}
+
 void print_job_list() {
     int j = 0;
     job* current = head;
@@ -103,7 +137,7 @@ void print_job_list() {
             j = 0;
             printf("&\n");
         }
-        
+
         else if (strcmp(current->state, "s") == 0) {
             if (current->pid == head->pid) {
                 printf("[%d]+  Stopped                 ", current->jid);
@@ -568,7 +602,7 @@ void cmd_handler(char* input) {
     }
     free(inputArgs);
 }
- 
+
 void read_command() {
     printf("icsh $ ");
 
@@ -580,6 +614,7 @@ void read_command() {
 
 void shell_start() {
     while (1) {
+        print_finished_job();
         read_command();
 
         // if the user passes an empty command or space character
@@ -624,27 +659,10 @@ void handle_chld() {
     pid = waitpid(-1, &status, WNOHANG);    // wait for termination of any procsss 
     
     if (pid > 0) {
-        int j = 0;
         job* current = head;
         while (current != NULL) {
             if (current->pid == pid) {
-                if (current->pid == head->pid) {
-                    printf("\n[%d]+  Done                    ", current->jid);
-                }
-                else if (current->pid == head->next->pid) {
-                    printf("\n[%d]-  Done                    ", current->jid);
-                }
-                else {
-                    printf("\n[%d]   Done                    ", current->jid);
-                }
-
-                while (strcmp(current->command[j], "")) {
-                    printf("%s ", current->command[j]);
-                    j++;
-                }
-                printf("\n");
-                remove_job_with_pid(pid);   // remove process from the list as soon as it finishes running
-                return;
+                current->state = "d";
             }
             current = current->next;
         }
