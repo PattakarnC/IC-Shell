@@ -244,6 +244,7 @@ void run_background(int jid) {
             printf("&\n");
 
             kill(current->pid, SIGCONT);
+            exit_code = 0;
             return;
         }
         current = current->next;
