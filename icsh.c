@@ -12,6 +12,7 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <errno.h>  
+#include <time.h>
 
 #define	MAX_CMD_CHAR 256
 
@@ -30,8 +31,76 @@ struct job_elem {
 typedef struct job_elem job; 
 
 int job_no = 1;
-
 job* head = NULL;               // head of linked list 
+
+
+/*==========================================================================*
+ * -------------------------- Extra Feature ------------------------------- *
+ *==========================================================================*/
+
+int generate(int limit) {
+
+    //Modulus to get range of output
+    int result = rand() % limit;
+    return result;
+}
+
+// source: https://github.com/Mini-Ware/Math-Quiz.git
+// all credits belong to its rightful owner
+void quiz_start() {
+    srand(time(NULL));
+    
+    int score, timer, x, y, n;
+    char ans[MAX_CMD_CHAR];
+    char op[] = "+-x/";
+    timer = time(NULL);
+    score = 0;
+
+    printf("\nGame Start!\n\n");
+
+    for (int qn = 1; qn <= 20; qn++) {
+        x = generate(13);
+        y = generate(12);
+        n = generate(4);
+
+        //Ensure that the questions can be solved
+        y += 1;
+        if (n == 3) {
+            x *= y;
+        }
+
+        printf("%d) What is %d %c %d?\n", qn, x, op[n], y);
+        printf("Answer: ");
+
+        fgets(ans, MAX_CMD_CHAR, stdin);
+      
+        if (n == 0 && atoi(ans) != x + y) {
+            printf("That is wrong!\n\n");
+        }
+        else if (n == 1 && atoi(ans) != x - y) {
+            printf("That is wrong!\n\n");
+        }
+        else if (n == 2 && atoi(ans) != x * y) {
+            printf("That is wrong!\n\n");
+        }
+        else if (n == 3 && atoi(ans) != x / y) {
+            printf("That is wrong!\n\n");
+        }
+        else {
+            printf("That is correct!\n\n");
+            score++;
+        }
+    }
+
+    printf("Accuracy: %d%%\n", score * 5);
+    printf("Time taken: %ld seconds\n", time(NULL) - timer);
+    printf("Thank you for playing!\n\n");
+}
+
+/*==========================================================================*
+ * ------------------------------------------------------------------------ *
+ *==========================================================================*/
+
 
 // for duplicating string array 
 char** copy_array_of_string(char** src) {
@@ -427,7 +496,7 @@ char** get_cmd_and_args(char* input) {
 }
 
 void cmd_handler(char* input) {
-    char listOfCmd[6][5] = {"echo", "!!", "exit", "jobs", "fg", "bg"};
+    char listOfCmd[7][5] = {"echo", "!!", "exit", "jobs", "fg", "bg", "quiz"};
     char** inputArgs = get_cmd_and_args(input);
 
     // command = echo
@@ -513,6 +582,13 @@ void cmd_handler(char* input) {
             exit_code = 1;
         }
         free(tokens);
+    }
+
+    // command = quiz
+    else if (strcmp(inputArgs[0], listOfCmd[6]) == 0) {
+        assign_last_cmd(input);
+        quiz_start();
+        exit_code = 0;
     }
     
     else {
