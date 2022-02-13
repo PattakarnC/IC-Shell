@@ -254,7 +254,6 @@ void run_background(int jid) {
     exit_code = 1;
 }
 
-
 // check for "&" character in a string
 int background_checker(char** input) {
     int index = 0;
@@ -388,7 +387,7 @@ char** get_cmd_agrs_as_tokens(char* input) {
     char* pch;
     int index = 0; 
     pch = strtok(input," ");
-    
+
     while (pch != NULL) {
         tokens[index] = pch;
         pch = strtok(NULL, " ");
